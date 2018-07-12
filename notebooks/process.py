@@ -4,7 +4,7 @@ import zipfile
 import subprocess
 from os.path import expanduser
 
-data_dir = expanduser("~") + "/Data/"
+data_dir = expanduser("~") + "/Data/artist/"
 all_artist_data = data_dir + "all_artist_data.csv"
 filtered = data_dir + "filtered.csv"
 

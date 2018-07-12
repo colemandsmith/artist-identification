@@ -13,10 +13,12 @@ import matplotlib.pyplot as plt
 # we trust this dataset (I think?)
 Image.MAX_IMAGE_PIXELS = None
 
-data_dir = expanduser("~") +"/Data/"
+data_dir = expanduser("~") +"/Data/artist/"
 all_artist_data = data_dir + "all_artist_data.csv"
 filtered = data_dir + "filtered.csv"
 artist_train = data_dir + "train"
+log_dir = data_dir + "logs/"
+model_dir = data_dir + "models/"
 
 label_to_artist = {}
 artist_to_label = {}
@@ -110,5 +112,3 @@ def show_sample_images():
     imshow(torchvision.utils.make_grid(sample['images']))
     # print labels
     print([label_to_artist[s.data.numpy()[()]] for s in sample['labels']])
-    
-
