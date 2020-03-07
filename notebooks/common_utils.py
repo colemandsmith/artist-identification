@@ -159,6 +159,8 @@ def train_with_params(network, mode, epochs, train, test, val, lr=1e-3, momentum
 
     network.cuda()
     
+    lower_lr = lr / 10
+    
     criterion = nn.CrossEntropyLoss()
     optimizer = set_optimizer(network, mode, lr, momentum)
     if model_name is None:
@@ -208,7 +210,7 @@ def train_with_params(network, mode, epochs, train, test, val, lr=1e-3, momentum
                     # if we haven't sufficiently improved, decrease the learning rate
                     if len(results_track) > 4 :
                         if results_track[-1] - results_track[0] < 1:
-                            lr /= 10
+                            lr = lower_lr
                             optimizer = set_optimizer(mode, lr, momentum)
                             lr_record = '[%d, %5d] new learning rate: %3f' % lr
                             log.write(lr_record)
