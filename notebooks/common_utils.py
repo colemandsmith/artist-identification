@@ -13,12 +13,12 @@ import matplotlib.pyplot as plt
 # we trust this dataset (I think?)
 Image.MAX_IMAGE_PIXELS = None
 
-data_dir = expanduser("~") +"/Data/artist/"
-all_artist_data = data_dir + "all_artist_data.csv"
-filtered = data_dir + "filtered.csv"
-artist_train = data_dir + "train"
-log_dir = data_dir + "logs/"
-model_dir = data_dir + "models/"
+data_dir = os.path.join(expanduser('~'), 'data','artist')
+all_artist_data = os.path.join(data_dir, 'all_artist_data.csv')
+filtered = os.path.join(data_dir, 'filtered.csv')
+artist_train = os.path.join(data_dir, 'train')
+log_dir = os.path.join(data_dir, 'logs')
+model_dir = os.path.join(data_dir, 'models')
 
 label_to_artist = {}
 artist_to_label = {}
@@ -46,7 +46,7 @@ train_loader_transform = transforms.Compose([transforms.RandomCrop(224),
                                              transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))])
 '''
 We want to load in an transform our data into proper format. This involves implementing the 
-Dataset asbtract class as well as instantiate dataloader classes with versions specific to our data and
+Dataset asbtract class as well as instantiating dataloader classes with versions specific to our data and
 our desired transformations. To follow along with the paper, we are going to randomly crop 224x244
 images out of the training images. 
 '''
