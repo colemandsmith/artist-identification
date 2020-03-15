@@ -26,9 +26,14 @@ label_to_artist = {}
 artist_to_label = {}
 
 
+def fetch_image(image_name, as_arr=False):
+    img = Image.open(os.path.join(ARTIST_TRAIN, image_name)).convert('RGB')
+    if as_arr:
+        return np.array(img)
+    return img
+
+
 def init_label_dicts():
-    label_to_artist = {}
-    artist_to_label = {}
     label_counter = 0
 
     with open(FILTERED, "r", encoding="utf8") as csvfile:
@@ -39,6 +44,7 @@ def init_label_dicts():
                 label_to_artist[label_counter] = row[0]
                 artist_to_label[row[0]] = label_counter
                 label_counter += 1
+    return label_to_artist, artist_to_label
 
 
 def get_num_artists():
@@ -60,7 +66,7 @@ train_loader_transform = transforms.Compose([
 We want to load in an transform our data into proper format. This involves
 implementing the Dataset asbtract class as well as instantiating dataloader
 classes with versions specific to our data and our desired transformations.
-To follow along with the paper, we are going to randomly crop 224x244
+To follow along with the paper, we are going to randomly crop 224x224
 images out of the training images.
 '''
 class ArtistImageDataset(torch.utils.data.Dataset):
@@ -70,16 +76,18 @@ class ArtistImageDataset(torch.utils.data.Dataset):
         self.label_frame = pd.read_csv(text_file, sep=",", usecols=range(1))
         self.img_dir = img_dir
         self.transform = transform
+        self.label_to_artist, self.artist_to_label = init_label_dicts()
 
     def __len__(self):
         return len(self.name_frame)
 
     def __getitem__(self, index):
-        img_name = os.path.join(self.img_dir, self.name_frame.iloc[index, 0])
-        image = Image.open(img_name).convert('RGB')
+        img_name = self.name_frame.iloc[index, 0]
+        img_path = os.path.join(self.img_dir, img_name)
+        image = Image.open(img_path).convert('RGB')
         image = self.transform(image)
-        labels = artist_to_label[self.label_frame.iloc[index, 0]]
-        sample = {'images': image, 'labels': labels}
+        labels = self.artist_to_label[self.label_frame.iloc[index, 0]]
+        sample = {'images': image, 'labels': labels, 'names': img_name}
 
         return sample
 
@@ -127,7 +135,8 @@ def show_sample_images(train_loader):
     # show images
     imshow(torchvision.utils.make_grid(sample['images']))
     # print labels
-    print([label_to_artist[s.data.numpy()[()]] for s in sample['labels']])
+    for artist, img in zip(sample['labels'], sample['names']):
+        print(f'{label_to_artist[artist.data.numpy()[()]]}: {img}')
 
 
 def set_optimizer(network, mode, new_lr, momentum):
