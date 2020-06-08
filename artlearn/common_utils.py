@@ -182,6 +182,8 @@ class ArtistLearner(object):
         self.log_after = log_after
         self.model_path = model_path
         self.model_name = model_name
+        self.train_losses = []
+        self.val_losses = []
         self.val_accuracies = []
         self.criterion = None
         self.full_log_path = None
@@ -200,30 +202,31 @@ class ArtistLearner(object):
         with torch.no_grad():
             total = 0
             correct = 0
-            total_loss = 0.0
+            val_loss = 0.0
             for sample in self.val:
                 images, labels = (sample['images'].cuda(),
                                   sample['labels'].cuda())
                 outputs = self.network(images)
-                total_loss += self.criterion(outputs, labels)
+                val_loss += self.criterion(outputs, labels).item()
 
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
 
+            val_loss /= len(self.val)
             self.val_accuracies.append(100*correct/total)
             acc_record = '[%d, %5d] validation accuracy: %.3f' % \
                 (epoch + 1, iteration + 1, 100*correct/total)
             print(acc_record)
             loss_record = '[%d, %5d] validation loss: %.3f' % \
-                (epoch + 1, iteration + 1, total_loss)
+                (epoch + 1, iteration + 1, val_loss)
             print(loss_record)
 
             with open(self.full_log_path, 'a') as log:
                 log.write(acc_record + '\n')
                 log.write(loss_record + '\n')
 
-        return total_loss
+        return val_loss
 
     def train_and_validate(self):
         '''Given a network, train and validate on the provided data.
@@ -259,6 +262,7 @@ class ArtistLearner(object):
         log.close()
 
         for epoch in range(self.epochs):
+            epoch_loss = 0.0
             running_loss = 0.0
 
             # train
@@ -273,19 +277,35 @@ class ArtistLearner(object):
                 self.optimizer.step()
 
                 running_loss += loss.item()
+                epoch_loss += loss.item()
                 if self.log_after and (i + 1) % self.log_after == 0:
                     self.log_stats(epoch, i, running_loss)
                     running_loss = 0
-
+            # approximation of total loss for the total training set.
+            # will be somewhat inaccurate since we update on each batch, but
+            # will save us from running over the whole training set again.
+            self.train_losses.append(epoch_loss/len(self.train))
             # validate
             val_loss = self.validate(epoch, i)
             scheduler.step(val_loss)
+            self.val_losses.append(val_loss)
 
         fig = plt.figure()
         plt.plot(range(1, len(self.val_accuracies) + 1), self.val_accuracies)
         plt.xlabel('number of epochs')
         plt.ylabel('percent accuracy')
-        fig.savefig(os.path.join(self.log_path, f'{self.model_name}.png'),
+        fig.savefig(os.path.join(self.log_path, f'{self.model_name}_acc.png'),
+                    dpi=fig.dpi)
+
+        fig = plt.figure()
+        plt.plot(range(1, len(self.val_losses) + 1), self.val_losses,
+                 label='validation loss')
+        plt.plot(range(1, len(self.train_losses) + 1), self.train_losses,
+                 label='training loss')
+        plt.xlabel('number of epochs')
+        plt.ylabel('loss')
+        plt.legend()
+        fig.savefig(os.path.join(self.log_path, f'{self.model_name}_loss.png'),
                     dpi=fig.dpi)
 
         print('done')
