@@ -66,8 +66,6 @@ train_loader_transform = transforms.Compose([
 We want to load in an transform our data into proper format. This involves
 implementing the Dataset asbtract class as well as instantiating dataloader
 classes with versions specific to our data and our desired transformations.
-To follow along with the paper, we are going to randomly crop 224x224
-images out of the training images.
 '''
 class ArtistImageDataset(torch.utils.data.Dataset):
     def __init__(self, text_file, img_dir, transform=train_loader_transform):
@@ -93,6 +91,16 @@ class ArtistImageDataset(torch.utils.data.Dataset):
 
 
 def get_dataloaders(batch_size=64):
+    """Create dataloaders for our dataset for train, test, and validation
+
+    Parameters
+    ----------
+    batch_size: int
+
+    Returns
+    -------
+    tuple of torch.utils.data.DataLoader
+    """
     dataset = ArtistImageDataset(text_file=FILTERED, img_dir=ARTIST_TRAIN)
     # split into train, test, and validation sets
     num_imgs = len(dataset)
@@ -139,23 +147,8 @@ def show_sample_images(train_loader):
         print(f'{label_to_artist[artist.data.numpy()[()]]}: {img}')
 
 
-def set_optimizer(network, mode, new_lr, momentum):
-    if mode.lower() == 'sgd':
-        return optim.SGD(network.parameters(), lr=new_lr, momentum=momentum)
-    elif mode.lower() == 'adam':
-        return optim.Adam(network.parameters(), lr=new_lr)
-    return None
-
-
-def train_with_params(network, mode, epochs, train, test, val, lr=1e-3,
-                      momentum=0.9, log_after=80, log_path=LOG_DIR,
-                      model_path=MODEL_DIR, model_name=None):
-    '''Given a network, train on the provided data with the provided parameters.
-
-    This method performs training on the network with the provided data. This
-    will persist the model to a file with a name derived from the parameters,
-    and will aditionally log out to a file named based on the network
-    parameters.
+class ArtistLearner(object):
+    '''Class to enable training of a torch.nn.Module
 
     Parameters
     ----------
@@ -173,87 +166,127 @@ def train_with_params(network, mode, epochs, train, test, val, lr=1e-3,
     model_path: str
     model_name: str
         if left None, a name will be generated based on the model params
-
-    Returns
-    -------
-    network: torch.nn.Module
     '''
+    def __init__(self, network, mode, epochs, train, test, val, lr=1e-3,
+                 momentum=0.9, log_after=80, log_path=LOG_DIR,
+                 model_path=MODEL_DIR, model_name=None):
+        self.network = network
+        self.mode = mode
+        self.epochs = epochs
+        self.train = train
+        self.test = test
+        self.val = val
+        self.lr = lr
+        self.momentum = 0.9
+        self.log_path = log_path
+        self.log_after = log_after
+        self.model_path = model_path
+        self.model_name = model_name
+        self.val_accuracies = []
+        self.criterion = None
+        self.full_log_path = None
+        self.scheduler = None
+        self.optimizer = None
 
-    network.cuda()
-    lower_lr = lr / 10
-    criterion = nn.CrossEntropyLoss()
-    optimizer = set_optimizer(network, mode, lr, momentum)
-    if model_name is None:
-        model_name = '%s_e_%d_lr_%.3f' % (mode, epochs, lr)
-        if mode == 'sgd':
-            model_name += '_m_%d' % momentum
+    def log_stats(self, epoch=0, iteration=0, running_loss=0.0):
+        loss_record = '[%d, %5d] loss: %.3f' % \
+            (epoch + 1, iteration + 1, running_loss / self.log_after)
+        with open(self.full_log_path, 'a') as log:
+            log.write(loss_record + '\n')
+        print(loss_record)
 
-    log = open(os.path.join(log_path, model_name), 'w')
+    def validate(self, epoch=0, iteration=0):
+        self.network.eval()
+        with torch.no_grad():
+            total = 0
+            correct = 0
+            total_loss = 0.0
+            for sample in self.val:
+                images, labels = (sample['images'].cuda(),
+                                  sample['labels'].cuda())
+                outputs = self.network(images)
+                total_loss += self.criterion(outputs, labels)
 
-    val_acc = []
-    iterations = []
-    train_len = len(train)
+                _, predicted = torch.max(outputs.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
 
-    for epoch in range(epochs):
-        running_loss = 0
-        results_track = []
+            self.val_accuracies.append(100*correct/total)
+            acc_record = '[%d, %5d] validation accuracy: %.3f' % \
+                (epoch + 1, iteration + 1, 100*correct/total)
+            print(acc_record)
+            loss_record = '[%d, %5d] validation loss: %.3f' % \
+                (epoch + 1, iteration + 1, total_loss)
+            print(loss_record)
 
-        for i, sample in enumerate(train):
-            images, labels = sample['images'].cuda(), sample['labels'].cuda()
-            optimizer.zero_grad()
-            outputs = network(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-            if log_after and (i+1) % log_after == 0:
-                loss_record = '[%d, %5d] loss: %.3f' % \
-                    (epoch + 1, i + 1, running_loss / log_after)
-                log.write(loss_record)
-                print(loss_record)
+            with open(self.full_log_path, 'a') as log:
+                log.write(acc_record + '\n')
+                log.write(loss_record + '\n')
 
-                running_loss = 0.0
-                with torch.no_grad():
-                    total = 0
-                    correct = 0
-                    for sample in val:
-                        images, labels = (sample['images'].cuda(),
-                                          sample['labels'].cuda())
-                        outputs = network(images)
-                        _, predicted = torch.max(outputs.data, 1)
-                        total += labels.size(0)
-                        correct += (predicted == labels).sum().item()
-                    val_acc.append(100*correct/total)
-                    iterations.append((i+1) + (train_len * epoch))
-                    acc_record = '[%d, %5d] test accuracy: %.3f' % \
-                        (epoch + 1, i + 1, 100*correct/total)
-                    log.write(acc_record)
-                    print(acc_record)
-                    # if we haven't sufficiently improved, decrease the
-                    # learning rate
-                    if len(results_track) > 4:
-                        if results_track[-1] - results_track[0] < 1:
-                            lr = lower_lr
-                            optimizer = set_optimizer(mode, lr, momentum)
-                            lr_record = '[%d, %5d] new learning rate: %3f' % lr
-                            log.write(lr_record)
-                            print(lr_record)
-                        # shift this to be a moving
-                        results_track.pop(0)
-                        results_track.append(val_acc[-1])
-                    else:
-                        results_track.append(val_acc[-1])
-    plt.plot(iterations, val_acc)
-    plt.xlabel('number of iterations')
-    plt.ylabel('percent accuracy')
-    plt.show()
+        return total_loss
 
-    print('done')
+    def train_and_validate(self):
+        '''Given a network, train and validate on the provided data.
 
-    log.close()
+        This method performs training on the network with the provided data.
+        This will persist the model to a file with a name derived from the
+        parameters, and will aditionally log out to a file named based on the
+        network parameters.
 
-    network_path = os.path.join(model_path, model_name)
-    torch.save(network.state_dict(), network_path)
-    print(f'network saved to {network_path}')
+        Returns
+        -------
+        network: torch.nn.Module
+        '''
 
-    return network
+        self.network.cuda()
+        self.criterion = nn.CrossEntropyLoss()
+        if self.mode.lower() == 'sgd':
+            self.optimizer = optim.SGD(self.network.parameters(), lr=self.lr,
+                                       momentum=self.momentum)
+        elif self.mode.lower() == 'adam':
+            self.optimizer = optim.Adam(self.network.parameters(), lr=self.lr)
+
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer,
+                                                         'min')
+        if self.model_name is None:
+            self.model_name = f'{self.mode}_e_{self.epochs}_lr_{self.lr:.3f}'
+            if self.mode == 'sgd':
+                self.model_name += f'_m_{self.momentum}'
+
+        # create or overwrite the file
+        self.full_log_path = os.path.join(self.log_path, self.model_name)
+        log = open(self.full_log_path, 'w')
+        log.close()
+
+        for epoch in range(self.epochs):
+            running_loss = 0.0
+
+            # train
+            self.network.train()
+            for i, sample in enumerate(self.train):
+                images, labels = (sample['images'].cuda(),
+                                  sample['labels'].cuda())
+                self.optimizer.zero_grad()
+                outputs = self.network(images)
+                loss = self.criterion(outputs, labels)
+                loss.backward()
+                self.optimizer.step()
+
+                running_loss += loss.item()
+                if self.log_after and (i + 1) % self.log_after == 0:
+                    self.log_stats(epoch, i, running_loss)
+                    running_loss = 0
+
+            # validate
+            val_loss = self.validate(epoch, i)
+            scheduler.step(val_loss)
+        plt.plot(range(1, len(self.val_accuracies) + 1), self.val_accuracies)
+        plt.xlabel('number of epochs')
+        plt.ylabel('percent accuracy')
+        plt.show()
+
+        print('done')
+
+        network_path = os.path.join(self.model_path, self.model_name)
+        torch.save(self.network.state_dict(), network_path)
+        print(f'network saved to {network_path}')

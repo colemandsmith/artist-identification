@@ -4,7 +4,7 @@ import copy
 import torch
 from torch.autograd import Variable
 
-import art_identify.common_utils as common_utils
+import artlearn.common_utils as common_utils
 
 
 def generate_random_image(size=224):
@@ -64,8 +64,8 @@ def denormalize(image):
     return recreated
 
 
-def maximize_img_for_artist(model, artist, lr=0.1, img=None,
-                            img_size=224):
+def maximize_img_for_artist(model, artist, img=None, iters=500, lr=0.5,
+                            img_size=224, verbose=False):
     """Maximizes an image for the artist from the model.
 
     Parameters
@@ -81,20 +81,20 @@ def maximize_img_for_artist(model, artist, lr=0.1, img=None,
     label = artist_to_label[artist]
     model.cuda()
     model = model.eval()
-    if not img:
+    if img is None:
         img = generate_random_image(img_size)
 
     img_var = preprocess(img)
-    optimizer = torch.optim.Adam([img_var], lr=0.5, weight_decay=1e-2)
-    for n in range(500):
+    optimizer = torch.optim.Adam([img_var], lr=lr, weight_decay=1e-2)
+    for n in range(iters):
         optimizer.zero_grad()
         outputs = model(img_var)
         loss = -outputs[0, label]
         model.zero_grad()
         loss.backward()
-        if n == 0 or n % 50 == 0:
+        if verbose and (n == 0 or n % 50 == 0):
             print(loss)
         optimizer.step()
     img = img_var.detach().cpu()
 
-    return img_var
+    return denormalize(img)
