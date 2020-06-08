@@ -7,5 +7,8 @@ setuptools.setup(
     description='Utilities for training models and example work training '
                 'neural networks to identify artists based on artwork.',
     packages=setuptools.find_packages(),
-    python_requires='>=3.6'
+    python_requires='>=3.6',
+    entry_points={
+        'console_scripts': ['art-train=artlearn.cli.command:main']
+    }
 )

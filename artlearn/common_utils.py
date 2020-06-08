@@ -90,7 +90,7 @@ class ArtistImageDataset(torch.utils.data.Dataset):
         return sample
 
 
-def get_dataloaders(batch_size=64):
+def get_dataloaders(batch_size=64, img_dir=ARTIST_TRAIN):
     """Create dataloaders for our dataset for train, test, and validation
 
     Parameters
@@ -101,7 +101,7 @@ def get_dataloaders(batch_size=64):
     -------
     tuple of torch.utils.data.DataLoader
     """
-    dataset = ArtistImageDataset(text_file=FILTERED, img_dir=ARTIST_TRAIN)
+    dataset = ArtistImageDataset(text_file=FILTERED, img_dir=img_dir)
     # split into train, test, and validation sets
     num_imgs = len(dataset)
     indices = list(range(num_imgs))
@@ -280,10 +280,13 @@ class ArtistLearner(object):
             # validate
             val_loss = self.validate(epoch, i)
             scheduler.step(val_loss)
+
+        fig = plt.figure()
         plt.plot(range(1, len(self.val_accuracies) + 1), self.val_accuracies)
         plt.xlabel('number of epochs')
         plt.ylabel('percent accuracy')
-        plt.show()
+        fig.savefig(os.path.join(self.log_path, f'{self.model_name}.png'),
+                    dpi=fig.dpi)
 
         print('done')
 
